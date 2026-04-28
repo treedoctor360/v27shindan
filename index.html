@@ -1572,7 +1572,7 @@
             }))
           };
           const res = await fetch(s.url, {
-            method: 'POST', headers: {'Content-Type': 'text/plain'},
+            method: 'POST', headers: {'Content-Type': 'application/json'},  // ← 修正後
             body: JSON.stringify(payload),
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
