@@ -1571,14 +1571,17 @@
               avg: r.avg, senderName: s.senderName||'',
             }))
           };
+          // startGasBulkSend 関数内
+      // ...
           const res = await fetch(s.url, {
-            method: 'POST', headers: {'Content-Type': 'application/json'},  // ← 修正後
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, // ここも修正
             body: JSON.stringify(payload),
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (data.status !== 'ok') throw new Error(data.message || '送信エラー');
-
+      // ...
           // 送信済みフラグを付ける
           chunk.forEach(r => {
             const idx = records.findIndex(rec => rec.id === r.id);
