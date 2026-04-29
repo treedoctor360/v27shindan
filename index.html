@@ -494,7 +494,7 @@
         <button onclick="testPleasanterConnection()" style="flex:1; padding:12px; background:#fff; border:1.5px solid #4527a0; border-radius:12px; color:#4527a0; font-size:0.9rem; cursor:pointer; font-family:inherit;">🔌 接続テスト</button>
         <button onclick="savePleasanterSettings()" style="flex:1; padding:12px; background:#4527a0; border:none; border-radius:12px; color:white; font-size:0.9rem; font-weight:700; cursor:pointer; font-family:inherit;">💾 設定を保存</button>
       </div>
-      <div id="plsTestResult" style="margin-top:12px; font-size:0.85rem; display:none;"></div>
+      <div id="plsTestResult" style="margin-top:12px; font-size:0.85rem; display:none; padding:10px 12px; border-radius:8px;"></div>
     </div>
   </div>
 
@@ -529,7 +529,7 @@
           <div id="plsProgressBar" style="background:linear-gradient(90deg,#6a1b9a,#9c27b0); height:100%; width:0%; transition:width 0.3s; border-radius:10px;"></div>
         </div>
       </div>
-      <div id="plsSendResult" style="display:none; margin-bottom:16px;"></div>
+      <div id="plsSendResult" style="display:none; margin-bottom:16px; padding:12px 14px; border-radius:10px;"></div>
       <div style="display:flex; gap:10px;">
         <button onclick="closePleasanterBulkModal()" style="flex:1; padding:12px; background:#fff; border:1.5px solid #999; border-radius:12px; color:#555; font-size:0.9rem; cursor:pointer; font-family:inherit;">閉じる</button>
         <button id="plsBulkSendBtn" onclick="startPleasanterBulkSend()" style="flex:2; padding:12px; background:linear-gradient(135deg,#6a1b9a,#9c27b0); border:none; border-radius:12px; color:white; font-size:0.95rem; font-weight:700; cursor:pointer; font-family:inherit;">📤 プリザンターへ送信</button>
@@ -1163,7 +1163,14 @@
 
       if (editingId) {
         const idx = records.findIndex(r=>r.id===editingId);
-        if (idx !== -1) records[idx] = dataForLS;
+        if (idx !== -1) {
+          // 送信状態を保持
+          dataForLS._sentToPleasanter = records[idx]._sentToPleasanter;
+          dataForLS._sentToGAS = records[idx]._sentToGAS;
+          dataForLS._sentAt = records[idx]._sentAt;
+          dataForLS._sentToGASAt = records[idx]._sentToGASAt;
+          records[idx] = dataForLS;
+        }
         editingId = null;
       } else {
         records.unshift(dataForLS);
@@ -1195,25 +1202,6 @@
       }
       renderPhotos(); updatePhotoCounter();
       document.querySelectorAll('.fungus-check').forEach(cb=>cb.checked=(r.fungus||[]).includes(cb.value)); document.querySelectorAll('.measure-check').forEach(cb=>cb.checked=(r.measures||[]).includes(cb.value)); updateOverall(); updateEditModeUI(); showTab('inspect'); };
-    window.sendSingleToPleasanter = async (id) => {
-      const r = records.find(rec => rec.id === id);
-      if (!r) return;
-      const s = loadPlsSettings();
-      if (!s.url || !s.siteId || !s.apiKey) {
-        alert('プリザンターの接続設定が未完了です。\n「⚙️ プリザンター設定」から設定してください。');
-        return;
-      }
-      try {
-        await sendOnePleasanter(r, s);
-        const idx = records.findIndex(rec => rec.id === id);
-        if (idx !== -1) { records[idx]._sentToPleasanter = true; records[idx]._sentAt = new Date().toISOString(); }
-        localStorage.setItem('treeRecords', JSON.stringify(records));
-        renderRecordsList();
-        alert(`✅ 「${r.treeNo} / ${r.species}」をプリザンターへ送信しました`);
-      } catch (e) {
-        alert(`❌ 送信失敗: ${e.message}\n接続設定やCORS設定を確認してください。`);
-      }
-    };
 
     window.deleteRecord = async (id) => { if(confirm('削除しますか？')){records=records.filter(r=>r.id!==id);localStorage.setItem('treeRecords',JSON.stringify(records));await deletePhotosFromIDB(id);updateAllMapMarkers();renderRecordsList();} };
     window.removeInvalidRecords = () => { records=records.filter(r=>r?.id);localStorage.setItem('treeRecords',JSON.stringify(records));updateAllMapMarkers();renderRecordsList();alert('無効記録を削除しました'); };
@@ -1288,9 +1276,22 @@
     window.exportToExcel = () => { const d=collectData(); if(!d.treeNo){alert('樹木Noを入力');return;} printRecord(d.id); };
     window.exportSummaryToExcel = () => { if(!records.filter(r=>r?.id).length){alert('データなし');return;} const wb=XLSX.utils.book_new(); const rows=[['調査日','樹木No','樹種','場所','点検者','樹高','幹周','緯度','経度','判定','所見','必要な措置']]; records.filter(r=>r?.id).forEach(r=>rows.push([r.surveyDate,r.treeNo,r.species,r.location,r.inspector,r.treeHeight,r.trunkGirth,r.latitude,r.longitude,r.overall,r.comment,(r.measures||[]).join('、')])); const ws=XLSX.utils.aoa_to_sheet(rows); setColWidths(ws,[12,10,15,20,12,8,8,12,12,8,30,30]); XLSX.utils.book_append_sheet(wb,ws,'一覧表'); dlBlob(new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/octet-stream'}),'樹木点検一覧.xlsx'); };
     window.exportAllToExcel = () => { const valid=records.filter(r=>r?.id); if(!valid.length){alert('データなし');return;} const wb=XLSX.utils.book_new(); valid.forEach(r=>{const ws=XLSX.utils.aoa_to_sheet([['樹木No',r.treeNo],['調査日',r.surveyDate],['天候',r.weather],['調査者',r.inspector],['樹種',r.species],['科名',r.family],['学名',r.scientificName],['愛称',r.nickname],['所在地',r.location],['樹高(m)',r.treeHeight],['幹周(cm)',r.trunkGirth],['緯度',r.latitude],['経度',r.longitude],['総合判定',r.overall],['所見',r.comment],['腐朽菌',[...(r.fungus||[]),r.fungusOther].filter(Boolean).join('、')],['必要な措置',(r.measures||[]).join('、')]]);setColWidths(ws,[20,40]);XLSX.utils.book_append_sheet(wb,ws,sanitizeSheetName(r.treeNo||r.id));}); const summary=[['調査日','樹木No','樹種','場所','点検者','樹高','幹周','緯度','経度','判定','所見','必要な措置']]; valid.forEach(r=>summary.push([r.surveyDate,r.treeNo,r.species,r.location,r.inspector,r.treeHeight,r.trunkGirth,r.latitude,r.longitude,r.overall,r.comment,(r.measures||[]).join('、')])); const wsSum=XLSX.utils.aoa_to_sheet(summary);setColWidths(wsSum,[12,10,15,20,12,8,8,12,12,8,30,30]);XLSX.utils.book_append_sheet(wb,wsSum,'一覧表'); dlBlob(new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/octet-stream'}),'全件樹木診断.xlsx'); };
-    window.exportAllToJSON = async () => {
 
-    // Google スプレッドシート連携機能（GAS）
+    // ===== 写真付きJSONバックアップ =====
+    window.exportAllToJSON = async () => {
+      const valid = records.filter(r => r?.id);
+      if (!valid.length) { alert('データなし'); return; }
+      const full = await Promise.all(valid.map(async r => {
+        const idbPhotos = r._hasIDBPhotos ? await loadPhotosFromIDB(r.id) : (r.photos || []);
+        const clean = {...r};
+        delete clean._hasIDBPhotos;
+        return {...clean, photos: idbPhotos};
+      }));
+      dlBlob(new Blob([JSON.stringify(full, null, 2)], {type:'application/json'}), `backup_${new Date().toISOString().slice(0,10)}.json`);
+      alert('✅ バックアップ完了！写真も含めて保存されました。大切に保管してください。');
+    };
+
+    // ===== Google スプレッドシート連携（GAS）=====
     const GAS_SETTINGS_KEY = 'treeInspect_gasSettings';
 
     function loadGasSettings() {
@@ -1325,7 +1326,7 @@
       result.style.display = 'block';
       result.style.background = '#fff8e1';
       result.textContent = '🔌 接続テスト中...';
-      if (!url) { result.style.background='#ffebee'; result.textContent='❌ URLを入力してください'; return; }
+      if (!url) { result.style.background = '#ffebee'; result.textContent = '❌ URLを入力してください'; return; }
       try {
         const res  = await fetch(url, { method: 'GET' });
         const data = await res.json();
@@ -1339,6 +1340,50 @@
       } catch (e) {
         result.style.background = '#ffebee';
         result.innerHTML = `❌ 接続失敗: ${e.message}<br><small style="color:#888;">URLが正しいか、GASが「全員」公開になっているか確認してください。</small>`;
+      }
+    };
+
+    async function sendOneToGAS(r, settings) {
+      const payload = {
+        token:      settings.token,
+        action:     'upsert',
+        senderName: settings.senderName || '',
+        records: [{
+          id: r.id, treeNo: r.treeNo, surveyDate: r.surveyDate,
+          weather: r.weather, inspector: r.inspector, species: r.species,
+          family: r.family, scientificName: r.scientificName,
+          location: r.location, treeHeight: r.treeHeight, trunkGirth: r.trunkGirth,
+          latitude: r.latitude, longitude: r.longitude, overall: r.overall,
+          scores: r.scores||{}, health: r.health||{},
+          fungus: r.fungus||[], fungusOther: r.fungusOther||'',
+          comment: r.comment||'', measures: r.measures||[],
+          avg: r.avg, senderName: settings.senderName||'',
+        }]
+      };
+      const res = await fetch(settings.url, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== 'ok') throw new Error(data.message || `HTTP Error: ${res.status}`);
+      return data;
+    }
+
+    window.sendSingleToGAS = async (id) => {
+      const r = records.find(rec => rec.id === id);
+      if (!r) return;
+      const s = loadGasSettings();
+      if (!s.url || !s.token) { alert('スプレッドシートの接続設定が未完了です'); return; }
+      try {
+        await sendOneToGAS(r, s);
+        const idx = records.findIndex(rec => rec.id === id);
+        if (idx !== -1) { records[idx]._sentToGAS = true; records[idx]._sentToGASAt = new Date().toISOString(); }
+        localStorage.setItem('treeRecords', JSON.stringify(records));
+        renderRecordsList();
+        alert(`✅ 「${r.treeNo} / ${r.species}」をスプレッドシートへ送信しました`);
+      } catch (e) {
+        alert(`❌ 送信失敗: ${e.message}`);
       }
     };
 
@@ -1372,56 +1417,6 @@
         `うち送信済み: ${valid.filter(r=>r._sentToGAS).length}件 / 未送信: ${valid.filter(r=>!r._sentToGAS).length}件 / 判定D: ${valid.filter(r=>r.overall==='D').length}件`;
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('input[name="gasSendMode"]').forEach(r => r.addEventListener('change', updateGasBulkPreview));
-    });
-
-    // ★修正：1件をGASへ送信
-    async function sendOneToGAS(r, settings) {
-      const payload = {
-        token:      settings.token,
-        action:     'upsert',
-        senderName: settings.senderName || '',
-        records: [{
-          id:             r.id,
-          treeNo:         r.treeNo,
-          surveyDate:     r.surveyDate,
-          weather:        r.weather,
-          inspector:      r.inspector,
-          species:        r.species,
-          family:         r.family,
-          scientificName: r.scientificName,
-          location:       r.location,
-          treeHeight:     r.treeHeight,
-          trunkGirth:     r.trunkGirth,
-          latitude:       r.latitude,
-          longitude:      r.longitude,
-          overall:        r.overall,
-          declineLevel:   r.declineLevel,
-          healthGrade:    r.healthGrade,
-          scores:         r.scores  || {},
-          health:         r.health  || {},
-          fungus:         r.fungus  || [],
-          fungusOther:    r.fungusOther || '',
-          comment:        r.comment || '',
-          measures:       r.measures || [],
-          avg:            r.avg,
-          senderName:     settings.senderName || '',
-        }]
-      };
-      const res = await fetch(settings.url, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' }, // ★修正
-        body:    JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || data.status !== 'ok') {
-        throw new Error(data.message || `HTTP Error: ${res.status}`);
-      }
-      return data;
-    }
-
-    // ★修正：一括送信実行
     window.startGasBulkSend = async () => {
       const s = loadGasSettings();
       if (!s.url || !s.token) { alert('スプレッドシートの接続設定が未完了です'); return; }
@@ -1441,7 +1436,6 @@
       document.getElementById('gasSendResult').style.display = 'none';
 
       let success = 0, failed = 0, failedItems = [];
-
       const CHUNK = 50;
       for (let i = 0; i < targets.length; i += CHUNK) {
         const chunk = targets.slice(i, i + CHUNK);
@@ -1458,7 +1452,6 @@
               family: r.family, scientificName: r.scientificName,
               location: r.location, treeHeight: r.treeHeight, trunkGirth: r.trunkGirth,
               latitude: r.latitude, longitude: r.longitude, overall: r.overall,
-              declineLevel: r.declineLevel, healthGrade: r.healthGrade,
               scores: r.scores||{}, health: r.health||{},
               fungus: r.fungus||[], fungusOther: r.fungusOther||'',
               comment: r.comment||'', measures: r.measures||[],
@@ -1467,7 +1460,7 @@
           };
           const res = await fetch(s.url, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'}, // ★修正
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload),
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1505,24 +1498,7 @@
       }
     };
 
-    window.sendSingleToGAS = async (id) => {
-      const r = records.find(rec => rec.id === id);
-      if (!r) return;
-      const s = loadGasSettings();
-      if (!s.url || !s.token) { alert('スプレッドシートの接続設定が未完了です'); return; }
-      try {
-        await sendOneToGAS(r, s);
-        const idx = records.findIndex(rec => rec.id === id);
-        if (idx !== -1) { records[idx]._sentToGAS = true; records[idx]._sentToGASAt = new Date().toISOString(); }
-        localStorage.setItem('treeRecords', JSON.stringify(records));
-        renderRecordsList();
-        alert(`✅ 「${r.treeNo} / ${r.species}」をスプレッドシートへ送信しました`);
-      } catch (e) {
-        alert(`❌ 送信失敗: ${e.message}`);
-      }
-    };
-
-    // プリザンター連携機能
+    // ===== プリザンター連携 =====
     const PLS_SETTINGS_KEY = 'treeInspect_pleasanterSettings';
 
     function loadPlsSettings() {
@@ -1598,7 +1574,6 @@
       const apiUrl = `${settings.url}/api/items/${settings.siteId}/upsert`;
       const scores = r.scores || {};
       const health = r.health || {};
-
       const scoreStr = Object.entries(scores).map(([k,v])=>`${k}:${v}`).join(', ');
       const healthStr = Object.entries(health).map(([k,v])=>`${k}:${v}`).join(', ');
       const measures = (r.measures||[]).join('、');
@@ -1649,17 +1624,35 @@
       return await res.json();
     }
 
+    window.sendSingleToPleasanter = async (id) => {
+      const r = records.find(rec => rec.id === id);
+      if (!r) return;
+      const s = loadPlsSettings();
+      if (!s.url || !s.siteId || !s.apiKey) {
+        alert('プリザンターの接続設定が未完了です。\n「⚙️ プリザンター設定」から設定してください。');
+        return;
+      }
+      try {
+        await sendOnePleasanter(r, s);
+        const idx = records.findIndex(rec => rec.id === id);
+        if (idx !== -1) { records[idx]._sentToPleasanter = true; records[idx]._sentAt = new Date().toISOString(); }
+        localStorage.setItem('treeRecords', JSON.stringify(records));
+        renderRecordsList();
+        alert(`✅ 「${r.treeNo} / ${r.species}」をプリザンターへ送信しました`);
+      } catch (e) {
+        alert(`❌ 送信失敗: ${e.message}\n接続設定やCORS設定を確認してください。`);
+      }
+    };
+
     window.openPleasanterBulkModal = () => {
       const s = loadPlsSettings();
       const connEl = document.getElementById('plsConnectionInfo');
       if (!s.url || !s.siteId || !s.apiKey) {
         connEl.innerHTML = '⚠️ プリザンターの接続設定が未完了です。先に「⚙️ プリザンター設定」を行ってください。';
-        connEl.style.background = '#ffebee';
-        connEl.style.color = '#b71c1c';
+        connEl.style.background = '#ffebee'; connEl.style.color = '#b71c1c';
       } else {
         connEl.innerHTML = `✅ 接続先: <strong>${s.url}</strong><br>サイトID: <strong>${s.siteId}</strong>  送信者: <strong>${s.senderName || '（未設定）'}</strong>`;
-        connEl.style.background = '#ede7f6';
-        connEl.style.color = '#4527a0';
+        connEl.style.background = '#ede7f6'; connEl.style.color = '#4527a0';
       }
       updateBulkPreview();
       document.getElementById('plsProgressArea').style.display = 'none';
@@ -1679,12 +1672,11 @@
       else if (mode === 'danger') target = valid.filter(r => r.overall === 'D');
       else target = valid;
       const el = document.getElementById('plsBulkPreviewText');
-      el.innerHTML = `送信対象: <strong>${target.length}件</strong>（全${valid.length}件中）<br>` +
-        `うち送信済み: ${valid.filter(r=>r._sentToPleasanter).length}件 / 未送信: ${valid.filter(r=>!r._sentToPleasanter).length}件 / 判定D: ${valid.filter(r=>r.overall==='D').length}件`;
+      if (el) {
+        el.innerHTML = `送信対象: <strong>${target.length}件</strong>（全${valid.length}件中）<br>` +
+          `うち送信済み: ${valid.filter(r=>r._sentToPleasanter).length}件 / 未送信: ${valid.filter(r=>!r._sentToPleasanter).length}件 / 判定D: ${valid.filter(r=>r.overall==='D').length}件`;
+      }
     }
-    document.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('input[name="plsSendMode"]').forEach(r => r.addEventListener('change', updateBulkPreview));
-    });
 
     window.startPleasanterBulkSend = async () => {
       const s = loadPlsSettings();
@@ -1749,17 +1741,7 @@
       }
     };
 
-      const valid = records.filter(r=>r?.id);
-      if (!valid.length) { alert('データなし'); return; }
-      const full = await Promise.all(valid.map(async r => {
-        const idbPhotos = r._hasIDBPhotos ? await loadPhotosFromIDB(r.id) : (r.photos || []);
-        return {...r, photos: idbPhotos, _hasIDBPhotos: undefined};
-      }));
-      dlBlob(new Blob([JSON.stringify(full, null, 2)], {type:'application/json'}), `backup_${new Date().toISOString().slice(0,10)}.json`);
-      alert('✅ バックアップ完了！写真も含めて保存されました。大切に保管してください。');
-    };
-
-    // メール送信機能
+    // ===== メール送信機能 =====
     function openMailModal() {
       if (!records.filter(r=>r?.id).length) { alert('送信するデータがありません'); return; }
       const today = new Date().toISOString().slice(0,10);
@@ -1803,7 +1785,7 @@
     window.downloadMailJSON = async () => { await exportAllToJSON(); };
     window.downloadMailCSV  = ()       => { exportAllToCSV(); };
 
-    // アドレス帳
+    // ===== アドレス帳 =====
     const ADDR_KEY = 'treeInspect_addressBook';
     function loadAddresses() {
       try { return JSON.parse(localStorage.getItem(ADDR_KEY) || '[]'); }
@@ -1856,7 +1838,7 @@
       renderAddressList();
     };
 
-    // JSONデータ統合機能
+    // ===== JSONデータ統合機能 =====
     document.getElementById('jsonMergeInput').addEventListener('change', async function(e) {
       const files = Array.from(e.target.files);
       if (!files.length) return;
@@ -1915,6 +1897,7 @@
       alert(`✅ 統合完了！合計${records.length}件のデータになりました。`);
       e.target.value = '';
     });
+
     window.exportAllToCSV = function() {
       const valid = records.filter(r => r?.id);
       if (!valid.length) { alert('出力する記録がありません'); return; }
@@ -1941,20 +1924,98 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       alert('CSVを出力しました');
     };
-    document.getElementById('jsonImportInput').addEventListener('change',function(e){ const file=e.target.files[0]; if(!file)return; const reader=new FileReader(); reader.onload=async ev=>{ try{ let text=ev.target.result; if(text.charCodeAt(0)===0xFEFF)text=text.slice(1); const imported=JSON.parse(text); if(Array.isArray(imported)){ const vl=imported.filter(r=>r?.id); if(vl.length&&confirm(`${vl.length}件で上書きしますか？\n※写真データも復元されます`)){ records = await Promise.all(vl.map(async r => { if(r.photos && r.photos.length > 0){ await savePhotosToIDB(r.id, r.photos); return {...r, photos:[], _hasIDBPhotos:true}; } return r; })); localStorage.setItem('treeRecords',JSON.stringify(records)); updateAllMapMarkers(); renderRecordsList(); alert('復元完了（写真も含めて復元されました）'); }} else alert('無効な形式'); }catch{ alert('JSON解析エラー'); } e.target.value=''; }; reader.readAsText(file,'UTF-8'); });
+
+    document.getElementById('jsonImportInput').addEventListener('change',function(e){ 
+      const file=e.target.files[0]; 
+      if(!file)return; 
+      const reader=new FileReader(); 
+      reader.onload=async ev=>{ 
+        try{ 
+          let text=ev.target.result; 
+          if(text.charCodeAt(0)===0xFEFF)text=text.slice(1); 
+          const imported=JSON.parse(text); 
+          if(Array.isArray(imported)){ 
+            const vl=imported.filter(r=>r?.id); 
+            if(vl.length&&confirm(`${vl.length}件で上書きしますか？\n※写真データも復元されます`)){ 
+              records = await Promise.all(vl.map(async r => { 
+                if(r.photos && r.photos.length > 0){ 
+                  await savePhotosToIDB(r.id, r.photos); 
+                  return {...r, photos:[], _hasIDBPhotos:true}; 
+                } 
+                return r; 
+              })); 
+              localStorage.setItem('treeRecords',JSON.stringify(records)); 
+              updateAllMapMarkers(); 
+              renderRecordsList(); 
+              alert('復元完了（写真も含めて復元されました）'); 
+            }
+          } else alert('無効な形式'); 
+        }catch{ 
+          alert('JSON解析エラー'); 
+        } 
+        e.target.value=''; 
+      }; 
+      reader.readAsText(file,'UTF-8'); 
+    });
+
     window.printInspectionPage = () => window.print();
-    window.printAllMap = function() { showTab('allmap'); setTimeout(()=>{ if(allMap)allMap.invalidateSize(); document.body.classList.add('print-map-only'); window.print(); setTimeout(()=>document.body.classList.remove('print-map-only'),200); },300); };
-    window.saveAllMapAsImage = () => { const mapElement=document.getElementById('allMap'); html2canvas(mapElement,{scale:2,backgroundColor:null,useCORS:true,allowTaint:false}).then(canvas=>{ const link=document.createElement('a'); link.download='全体マップ.png'; link.href=canvas.toDataURL('image/png'); link.click(); }).catch(err=>alert('画像保存に失敗しました')); };
-    function showTab(tab) { document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active')); document.getElementById(`tab-${tab}`).classList.add('active'); document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); document.querySelector(`[data-tab="${tab}"]`).classList.add('active'); if(tab==='records') renderRecordsList(); if(tab==='allmap'){setTimeout(()=>{if(!allMap)initAllMap();else{allMap.invalidateSize();updateAllMapMarkers();}},100);} }
+    window.printAllMap = function() { 
+      showTab('allmap'); 
+      setTimeout(()=>{ 
+        if(allMap)allMap.invalidateSize(); 
+        document.body.classList.add('print-map-only'); 
+        window.print(); 
+        setTimeout(()=>document.body.classList.remove('print-map-only'),200); 
+      },300); 
+    };
+    window.saveAllMapAsImage = () => { 
+      const mapElement=document.getElementById('allMap'); 
+      html2canvas(mapElement,{scale:2,backgroundColor:null,useCORS:true,allowTaint:false}).then(canvas=>{ 
+        const link=document.createElement('a'); 
+        link.download='全体マップ.png'; 
+        link.href=canvas.toDataURL('image/png'); 
+        link.click(); 
+      }).catch(err=>alert('画像保存に失敗しました')); 
+    };
+
+    function showTab(tab) { 
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active')); 
+      document.getElementById(`tab-${tab}`).classList.add('active'); 
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active')); 
+      document.querySelector(`[data-tab="${tab}"]`).classList.add('active'); 
+      if(tab==='records') renderRecordsList(); 
+      if(tab==='allmap'){
+        setTimeout(()=>{
+          if(!allMap)initAllMap();
+          else{allMap.invalidateSize();updateAllMapMarkers();}
+        },100);
+      } 
+    }
     window.showTab = showTab;
-    function init() { buildUI(); initMap(); openDB().catch(e=>console.warn('IDB init failed',e)); const saved=localStorage.getItem('treeRecords'); if(saved){try{records=JSON.parse(saved);}catch{}} records=records.filter(r=>r?.id); document.getElementById('surveyDate').value=new Date().toISOString().split('T')[0]; document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab))); document.getElementById('searchInput').addEventListener('input',renderRecordsList); document.getElementById('sortSelect').addEventListener('change',renderRecordsList); renderPhotos(); updateOverall(); updateEditModeUI(); updatePhotoCounter(); }
+
+    function init() { 
+      buildUI(); 
+      initMap(); 
+      openDB().catch(e=>console.warn('IDB init failed',e)); 
+      const saved=localStorage.getItem('treeRecords'); 
+      if(saved){try{records=JSON.parse(saved);}catch{}} 
+      records=records.filter(r=>r?.id); 
+      document.getElementById('surveyDate').value=new Date().toISOString().split('T')[0]; 
+      document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab))); 
+      document.getElementById('searchInput').addEventListener('input',renderRecordsList); 
+      document.getElementById('sortSelect').addEventListener('change',renderRecordsList); 
+      renderPhotos(); 
+      updateOverall(); 
+      updateEditModeUI(); 
+      updatePhotoCounter(); 
+    }
     init();
   })();
 </script>
 
 <script>
   if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('/v26.1shindan/sw.js',{scope:'/v26.1shindan/'}).then(reg=>{
+    navigator.serviceWorker.register('/v27shindan/sw.js',{scope:'/v27shindan/'}).then(reg=>{
       if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
       reg.addEventListener('updatefound',()=>{ const nw=reg.installing; nw.addEventListener('statechange',()=>{ if(nw.state==='installed'&&navigator.serviceWorker.controller){ if(confirm('最新バージョンがあります。更新しますか？')){nw.postMessage({type:'SKIP_WAITING'});window.location.reload();} } }); });
     }).catch(()=>{});
